@@ -88,7 +88,6 @@ export default function ExcalidrawWrapper({
         canvasActions: {
           loadScene: true,
           export: true,
-          saveToActiveFile: true,
           theme: false,
           changeViewBackgroundColor: true,
           clearCanvas: true,
