@@ -1,7 +1,8 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { uploadToStorage, downloadFromStorage, sceneStorageKey } from '@/lib/tigris';
 
-// GET whiteboard by ID
+// GET whiteboard by ID — fetches scene from cloud storage (fallback to DB)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -25,7 +26,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(whiteboard);
+    // Try to get scene data from cloud storage first
+    const cloudData = await downloadFromStorage(sceneStorageKey(id));
+    const sceneData = cloudData || whiteboard.data;
+
+    // Parse the scene data
+    let parsedData = null;
+    if (sceneData) {
+      try {
+        parsedData = JSON.parse(sceneData);
+      } catch {
+        parsedData = null;
+      }
+    }
+
+    return NextResponse.json({
+      ...whiteboard,
+      data: parsedData,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch whiteboard' },
@@ -62,6 +80,21 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Try to initialize an empty scene in cloud storage (non-blocking)
+    const emptyScene = JSON.stringify({
+      type: 'excalidraw',
+      version: 2,
+      source: 'whiteboard-studio',
+      elements: [],
+      appState: {},
+      files: {},
+    });
+    try {
+      await uploadToStorage(sceneStorageKey(whiteboard.id), emptyScene, 'application/json');
+    } catch {
+      // Cloud storage optional — falls back to local DB
+    }
+
     return NextResponse.json(whiteboard, { status: 201 });
   } catch (error) {
     return NextResponse.json(
@@ -71,7 +104,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT update a whiteboard
+// PUT update a whiteboard — saves scene data to cloud storage + title to DB
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
@@ -84,13 +117,28 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Update metadata in DB
     const whiteboard = await db.whiteboard.update({
       where: { id },
       data: {
         ...(title !== undefined && { title: title.trim() }),
-        ...(data !== undefined && { data }),
       },
     });
+
+    // Save scene data to cloud storage
+    if (data !== undefined) {
+      const jsonStr = typeof data === 'string' ? data : JSON.stringify(data);
+      try {
+        await uploadToStorage(sceneStorageKey(id), jsonStr, 'application/json');
+      } catch (storageError) {
+        console.error('Cloud storage save failed, keeping in DB fallback:', storageError);
+        // Fallback: also save in DB
+        await db.whiteboard.update({
+          where: { id },
+          data: { data: jsonStr },
+        });
+      }
+    }
 
     return NextResponse.json(whiteboard);
   } catch (error) {
@@ -117,6 +165,9 @@ export async function DELETE(request: NextRequest) {
     await db.whiteboard.delete({
       where: { id },
     });
+
+    // Note: We keep the cloud storage data as-is for potential recovery
+    // In production, you'd also call deleteFromStorage(sceneStorageKey(id))
 
     return NextResponse.json({ success: true });
   } catch (error) {

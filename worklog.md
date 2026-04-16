@@ -28,3 +28,29 @@ Stage Summary:
   - Multi-theme support (light/dark) synced with Excalidraw
   - CRUD operations for projects and whiteboards
   - Responsive design using shadcn/ui components
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Integrate Tigris cloud storage for whiteboard data persistence
+
+Work Log:
+- Installed @aws-sdk/client-s3 for S3-compatible Tigris storage
+- Created lib/tigris.ts utility with upload/download/delete functions
+- Created API routes: /api/storage/upload-scene, /api/storage/download-scene, /api/storage/upload-file
+- Updated whiteboard API to save scene data to cloud (with DB fallback)
+- Updated whiteboard API to load from cloud first (fallback to DB)
+- Updated Excalidraw wrapper to handle binary file uploads to cloud
+- Updated whiteboard editor with cloud sync status indicators
+- Configured Tigris credentials in .env
+- Added graceful fallback: if cloud storage fails, data saves to local DB
+- Verified lint passes and app compiles with no errors
+
+Stage Summary:
+- Cloud storage integration with graceful fallback:
+  - Whiteboard scene data saved to Tigris at scenes/{boardId}/scene.json
+  - Binary files (images) uploaded to files/{boardId}/{fileId}
+  - Cloud sync status indicator (Cloud icon) in editor top bar
+  - If Tigris write access denied, automatically falls back to local SQLite DB
+  - Public read URL: https://my-excalidraw.t3.tigrisfiles.io
+  - Note: Current credentials appear to be read-only; write requires updated Tigris ACL

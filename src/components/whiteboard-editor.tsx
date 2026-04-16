@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, type Project, type Whiteboard } from '@/store/app-store';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
+import type { BinaryFileData } from '@excalidraw/excalidraw/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -45,6 +46,8 @@ import {
   Sun,
   Moon,
   Layers,
+  Cloud,
+  CloudOff,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -80,8 +83,7 @@ export default function WhiteboardEditor() {
   const { theme, setTheme } = useTheme();
 
   const [whiteboards, setWhiteboards] = useState<Whiteboard[]>([]);
-  const [whiteboardData, setWhiteboardData] = useState<string | null>(null);
-  const [loadingData, setLoadingData] = useState(false);
+  const [whiteboardData, setWhiteboardData] = useState<Record<string, unknown> | null>(null);
   const [createBoardOpen, setCreateBoardOpen] = useState(false);
   const [renameBoardOpen, setRenameBoardOpen] = useState(false);
   const [deleteBoardOpen, setDeleteBoardOpen] = useState(false);
@@ -89,7 +91,9 @@ export default function WhiteboardEditor() {
   const [boardTitle, setBoardTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingFileUploadsRef = useRef<Set<string>>(new Set());
 
   // Fetch whiteboards list when project changes
   useEffect(() => {
@@ -101,10 +105,60 @@ export default function WhiteboardEditor() {
     }
   }, [currentProject, currentWhiteboardId, setCurrentWhiteboardId]);
 
+  // Upload binary files to cloud storage
+  const uploadFilesToCloud = useCallback(
+    async (files: Record<string, BinaryFileData>, boardId: string) => {
+      if (!boardId) return files;
+
+      const uploadedFiles = { ...files };
+
+      for (const [fileId, fileData] of Object.entries(files)) {
+        // Skip if already uploaded or if data is a string URL
+        if (!fileData.data || typeof fileData.data === 'string') continue;
+        if (pendingFileUploadsRef.current.has(fileId)) continue;
+
+        pendingFileUploadsRef.current.add(fileId);
+
+        try {
+          const blob = new Blob([fileData.data], {
+            type: fileData.mimeType || 'application/octet-stream',
+          });
+
+          const formData = new FormData();
+          formData.append('boardId', boardId);
+          formData.append('fileId', fileId);
+          formData.append('mimeType', fileData.mimeType || 'application/octet-stream');
+          formData.append('file', blob, fileId);
+
+          const res = await fetch('/api/storage/upload-file', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (res.ok) {
+            const result = await res.json();
+            // Keep the file data as-is for rendering, but mark as uploaded
+            // The cloud URL is stored for reference
+            uploadedFiles[fileId] = {
+              ...fileData,
+              uploadedCloudUrl: result.url,
+            } as BinaryFileData;
+          }
+        } catch (error) {
+          console.error(`Failed to upload file ${fileId}:`, error);
+        }
+      }
+
+      pendingFileUploadsRef.current.clear();
+      return uploadedFiles;
+    },
+    []
+  );
+
   // Fetch whiteboard data when the current board changes
   useEffect(() => {
     if (currentWhiteboardId) {
-      setLoadingData(true);
+      setWhiteboardData(null);
       fetch(`/api/whiteboards?id=${currentWhiteboardId}`)
         .then((res) => res.json())
         .then((data) => {
@@ -116,16 +170,21 @@ export default function WhiteboardEditor() {
         })
         .catch(() => {
           setWhiteboardData(null);
-        })
-        .finally(() => {
-          setLoadingData(false);
         });
     }
   }, [currentWhiteboardId]);
 
-  // Auto-save whiteboard data on change
+  // Auto-save whiteboard data on change — saves to cloud storage
   const handleExcalidrawChange = useCallback(
-    (elements: unknown, appState: unknown, files: unknown) => {
+    async ({
+      elements,
+      appState,
+      files,
+    }: {
+      elements: unknown;
+      appState: Record<string, unknown>;
+      files: Record<string, BinaryFileData>;
+    }) => {
       if (!currentWhiteboardId) return;
 
       // Debounce saving
@@ -135,19 +194,43 @@ export default function WhiteboardEditor() {
 
       saveTimeoutRef.current = setTimeout(async () => {
         setSaving(true);
+        setCloudStatus('saving');
+
         try {
+          // Upload any new binary files to cloud
+          const processedFiles = await uploadFilesToCloud(files, currentWhiteboardId);
+
+          // Build data to save — strip large binary data from the JSON payload
+          // Binary files are already uploaded to cloud storage separately
+          const serializableFiles: Record<string, unknown> = {};
+          for (const [fileId, fileData] of Object.entries(processedFiles)) {
+            serializableFiles[fileId] = {
+              id: fileId,
+              mimeType: fileData.mimeType,
+              created: fileData.created,
+              lastRetrieved: fileData.lastRetrieved,
+              // Don't include the raw ArrayBuffer in DB — it's in cloud storage
+              dataURL: fileData.dataURL || null,
+              isUploaded: !!fileData.uploadedCloudUrl,
+              cloudUrl: (fileData as Record<string, unknown>).uploadedCloudUrl || null,
+            };
+          }
+
           const dataToSave = {
+            type: 'excalidraw',
+            version: 2,
+            source: 'whiteboard-studio',
             elements,
             appState: {
-              ...(appState as Record<string, unknown>),
-              // Don't save scroll position and viewBackgroundColor
+              ...appState,
               scrollX: undefined,
               scrollY: undefined,
             },
-            files,
+            files: serializableFiles,
           };
 
-          await fetch('/api/whiteboards', {
+          // Save to cloud storage (via whiteboard API which handles both DB + cloud)
+          const res = await fetch('/api/whiteboards', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -155,14 +238,23 @@ export default function WhiteboardEditor() {
               data: JSON.stringify(dataToSave),
             }),
           });
+
+          if (res.ok) {
+            setCloudStatus('saved');
+            setTimeout(() => setCloudStatus('idle'), 2000);
+          } else {
+            setCloudStatus('error');
+            setTimeout(() => setCloudStatus('idle'), 3000);
+          }
         } catch {
-          // Silent fail for auto-save
+          setCloudStatus('error');
+          setTimeout(() => setCloudStatus('idle'), 3000);
         } finally {
           setSaving(false);
         }
       }, 500);
     },
-    [currentWhiteboardId]
+    [currentWhiteboardId, uploadFilesToCloud]
   );
 
   const handleCreateBoard = async () => {
@@ -253,7 +345,31 @@ export default function WhiteboardEditor() {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  const activeBoard = whiteboards.find((w) => w.id === currentWhiteboardId);
+  const getCloudStatusIcon = () => {
+    switch (cloudStatus) {
+      case 'saving':
+        return <Cloud className="h-3.5 w-3.5 text-muted-foreground animate-pulse" />;
+      case 'saved':
+        return <Cloud className="h-3.5 w-3.5 text-green-500" />;
+      case 'error':
+        return <CloudOff className="h-3.5 w-3.5 text-destructive" />;
+      default:
+        return <Cloud className="h-3.5 w-3.5 text-muted-foreground" />;
+    }
+  };
+
+  const getCloudStatusText = () => {
+    switch (cloudStatus) {
+      case 'saving':
+        return 'Syncing to cloud...';
+      case 'saved':
+        return 'Saved to cloud';
+      case 'error':
+        return 'Cloud sync failed';
+      default:
+        return '';
+    }
+  };
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -305,7 +421,10 @@ export default function WhiteboardEditor() {
 
           <div className="flex items-center gap-2">
             {saving && (
-              <span className="text-xs text-muted-foreground animate-pulse">Saving...</span>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {getCloudStatusIcon()}
+                <span>{getCloudStatusText()}</span>
+              </div>
             )}
             <Tooltip>
               <TooltipTrigger asChild>

@@ -1,14 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
+import type { ExcalidrawImperativeAPI, BinaryFileData } from '@excalidraw/excalidraw/types';
 import { useTheme } from 'next-themes';
 import '@excalidraw/excalidraw/index.css';
 
 interface ExcalidrawWrapperProps {
-  initialData?: string | null;
+  initialData?: Record<string, unknown> | null;
   whiteboardId: string | null;
-  onChange: (elements: unknown, appState: unknown, files: unknown) => void;
+  onChange: (data: {
+    elements: unknown;
+    appState: Record<string, unknown>;
+    files: Record<string, BinaryFileData>;
+  }) => void;
 }
 
 export default function ExcalidrawWrapper({
@@ -29,18 +33,44 @@ export default function ExcalidrawWrapper({
     });
   }, []);
 
-  // Parse initial data
-  const parsedData = initialData ? (() => {
-    try {
-      return JSON.parse(initialData);
-    } catch {
+  // Upload binary files to cloud storage when they're added
+  const uploadBinaryFile = useCallback(
+    async (fileId: string, fileData: BinaryFileData) => {
+      if (!whiteboardId || !fileData.data || typeof fileData.data === 'string') return;
+
+      try {
+        const blob = new Blob([fileData.data], { type: fileData.mimeType || 'application/octet-stream' });
+        const formData = new FormData();
+        formData.append('boardId', whiteboardId);
+        formData.append('fileId', fileId);
+        formData.append('mimeType', fileData.mimeType || 'application/octet-stream');
+        formData.append('file', blob, `${fileId}`);
+
+        const res = await fetch('/api/storage/upload-file', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          // Return a reference with the cloud URL instead of raw binary
+          return result.url;
+        }
+      } catch (error) {
+        console.error('Failed to upload binary file to cloud:', error);
+      }
       return null;
-    }
-  })() : null;
+    },
+    [whiteboardId]
+  );
 
   const handleChange = useCallback(
     (elements: unknown, appState: unknown, files: unknown) => {
-      onChange(elements, appState, files);
+      onChange({
+        elements,
+        appState: appState as Record<string, unknown>,
+        files: files as Record<string, BinaryFileData>,
+      });
     },
     [onChange]
   );
@@ -57,7 +87,7 @@ export default function ExcalidrawWrapper({
   }
 
   const Excalidraw = ExcalidrawComponent as React.ComponentType<{
-    initialData?: unknown;
+    initialData?: Record<string, unknown>;
     onChange?: (elements: unknown, appState: unknown, files: unknown) => void;
     theme?: 'light' | 'dark';
     excalidrawAPI?: (api: ExcalidrawImperativeAPI) => void;
@@ -66,19 +96,17 @@ export default function ExcalidrawWrapper({
       canvasActions?: {
         loadScene?: boolean;
         export?: boolean;
-        saveToActiveFile?: boolean;
         theme?: boolean;
         changeViewBackgroundColor?: boolean;
         clearCanvas?: boolean;
       };
     };
-    viewModeEnabled?: boolean;
   }>;
 
   return (
     <Excalidraw
       key={whiteboardId || 'default'}
-      initialData={parsedData}
+      initialData={initialData || undefined}
       onChange={handleChange}
       theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
       excalidrawAPI={(api) => {
