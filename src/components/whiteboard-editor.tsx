@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAppStore, type Project, type Whiteboard } from '@/store/app-store';
+import { useAppStore, type Whiteboard } from '@/store/app-store';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
-import type { BinaryFileData } from '@excalidraw/excalidraw/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -46,8 +45,7 @@ import {
   Sun,
   Moon,
   Layers,
-  Cloud,
-  CloudOff,
+  Save,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -57,13 +55,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 
+// Dynamic import with ssr:false — the wrapper inside also lazy-loads Excalidraw
 const ExcalidrawWrapper = dynamic(() => import('./excalidraw'), {
   ssr: false,
   loading: () => (
     <div className="absolute inset-0 flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
-        <p className="text-sm text-muted-foreground">Loading whiteboard...</p>
+        <p className="text-sm text-muted-foreground">Loading whiteboard…</p>
       </div>
     </div>
   ),
@@ -82,6 +81,7 @@ export default function WhiteboardEditor() {
 
   const { theme, setTheme } = useTheme();
 
+  // ── Local state ──
   const [whiteboards, setWhiteboards] = useState<Whiteboard[]>([]);
   const [whiteboardData, setWhiteboardData] = useState<Record<string, unknown> | null>(null);
   const [createBoardOpen, setCreateBoardOpen] = useState(false);
@@ -90,173 +90,99 @@ export default function WhiteboardEditor() {
   const [selectedBoard, setSelectedBoard] = useState<Whiteboard | null>(null);
   const [boardTitle, setBoardTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingFileUploadsRef = useRef<Set<string>>(new Set());
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSavingRef = useRef(false);
 
-  // Fetch whiteboards list when project changes
+  // ── When project is set, populate whiteboards list ──
   useEffect(() => {
     if (currentProject) {
-      setWhiteboards(currentProject.whiteboards || []);
-      if (currentProject.whiteboards?.length > 0 && !currentWhiteboardId) {
-        setCurrentWhiteboardId(currentProject.whiteboards[0].id);
+      const boards = currentProject.whiteboards || [];
+      setWhiteboards(boards);
+      // Auto-select first board if none selected
+      if (boards.length > 0 && !currentWhiteboardId) {
+        setCurrentWhiteboardId(boards[0].id);
       }
     }
   }, [currentProject, currentWhiteboardId, setCurrentWhiteboardId]);
 
-  // Upload binary files to cloud storage
-  const uploadFilesToCloud = useCallback(
-    async (files: Record<string, BinaryFileData>, boardId: string) => {
-      if (!boardId) return files;
-
-      const uploadedFiles = { ...files };
-
-      for (const [fileId, fileData] of Object.entries(files)) {
-        // Skip if already uploaded or if data is a string URL
-        if (!fileData.data || typeof fileData.data === 'string') continue;
-        if (pendingFileUploadsRef.current.has(fileId)) continue;
-
-        pendingFileUploadsRef.current.add(fileId);
-
-        try {
-          const blob = new Blob([fileData.data], {
-            type: fileData.mimeType || 'application/octet-stream',
-          });
-
-          const formData = new FormData();
-          formData.append('boardId', boardId);
-          formData.append('fileId', fileId);
-          formData.append('mimeType', fileData.mimeType || 'application/octet-stream');
-          formData.append('file', blob, fileId);
-
-          const res = await fetch('/api/storage/upload-file', {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (res.ok) {
-            const result = await res.json();
-            // Keep the file data as-is for rendering, but mark as uploaded
-            // The cloud URL is stored for reference
-            uploadedFiles[fileId] = {
-              ...fileData,
-              uploadedCloudUrl: result.url,
-            } as BinaryFileData;
-          }
-        } catch (error) {
-          console.error(`Failed to upload file ${fileId}:`, error);
-        }
-      }
-
-      pendingFileUploadsRef.current.clear();
-      return uploadedFiles;
-    },
-    []
-  );
-
-  // Fetch whiteboard data when the current board changes
+  // ── Fetch scene data when board ID changes ──
   useEffect(() => {
-    if (currentWhiteboardId) {
+    if (!currentWhiteboardId) {
       setWhiteboardData(null);
-      fetch(`/api/whiteboards?id=${currentWhiteboardId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.data) {
-            setWhiteboardData(data.data);
-          } else {
-            setWhiteboardData(null);
-          }
-        })
-        .catch(() => {
-          setWhiteboardData(null);
-        });
+      return;
     }
+
+    let cancelled = false;
+
+    async function loadBoard() {
+      setWhiteboardData(null);
+      try {
+        const res = await fetch(`/api/whiteboards?id=${currentWhiteboardId}`);
+        if (!res.ok) throw new Error('Failed to fetch');
+        const json = await res.json();
+        if (!cancelled) {
+          setWhiteboardData(json.data || null);
+        }
+      } catch (err) {
+        console.error('Failed to load board:', err);
+        if (!cancelled) setWhiteboardData(null);
+      }
+    }
+
+    loadBoard();
+    return () => { cancelled = true; };
   }, [currentWhiteboardId]);
 
-  // Auto-save whiteboard data on change — saves to cloud storage
+  // ── Save handler: receives raw Excalidraw onChange args ──
   const handleExcalidrawChange = useCallback(
-    async ({
-      elements,
-      appState,
-      files,
-    }: {
-      elements: unknown;
-      appState: Record<string, unknown>;
-      files: Record<string, BinaryFileData>;
-    }) => {
-      if (!currentWhiteboardId) return;
+    (elements: unknown, appState: unknown, files: unknown) => {
+      if (!currentWhiteboardId || isSavingRef.current) return;
 
-      // Debounce saving
+      // Debounce saves
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
 
       saveTimeoutRef.current = setTimeout(async () => {
-        setSaving(true);
-        setCloudStatus('saving');
+        isSavingRef.current = true;
+        setSaveStatus('saving');
 
         try {
-          // Upload any new binary files to cloud
-          const processedFiles = await uploadFilesToCloud(files, currentWhiteboardId);
-
-          // Build data to save — strip large binary data from the JSON payload
-          // Binary files are already uploaded to cloud storage separately
-          const serializableFiles: Record<string, unknown> = {};
-          for (const [fileId, fileData] of Object.entries(processedFiles)) {
-            serializableFiles[fileId] = {
-              id: fileId,
-              mimeType: fileData.mimeType,
-              created: fileData.created,
-              lastRetrieved: fileData.lastRetrieved,
-              // Don't include the raw ArrayBuffer in DB — it's in cloud storage
-              dataURL: fileData.dataURL || null,
-              isUploaded: !!fileData.uploadedCloudUrl,
-              cloudUrl: (fileData as Record<string, unknown>).uploadedCloudUrl || null,
-            };
-          }
-
-          const dataToSave = {
-            type: 'excalidraw',
-            version: 2,
-            source: 'whiteboard-studio',
+          const sceneData = {
             elements,
-            appState: {
-              ...appState,
-              scrollX: undefined,
-              scrollY: undefined,
-            },
-            files: serializableFiles,
+            appState,
+            files,
           };
 
-          // Save to cloud storage (via whiteboard API which handles both DB + cloud)
           const res = await fetch('/api/whiteboards', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               id: currentWhiteboardId,
-              data: JSON.stringify(dataToSave),
+              data: JSON.stringify(sceneData),
             }),
           });
 
           if (res.ok) {
-            setCloudStatus('saved');
-            setTimeout(() => setCloudStatus('idle'), 2000);
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2000);
           } else {
-            setCloudStatus('error');
-            setTimeout(() => setCloudStatus('idle'), 3000);
+            setSaveStatus('error');
+            setTimeout(() => setSaveStatus('idle'), 3000);
           }
         } catch {
-          setCloudStatus('error');
-          setTimeout(() => setCloudStatus('idle'), 3000);
+          setSaveStatus('error');
+          setTimeout(() => setSaveStatus('idle'), 3000);
         } finally {
-          setSaving(false);
+          isSavingRef.current = false;
         }
-      }, 500);
+      }, 800);
     },
-    [currentWhiteboardId, uploadFilesToCloud]
+    [currentWhiteboardId]
   );
 
+  // ── Board CRUD ──
   const handleCreateBoard = async () => {
     if (!currentProject || !boardTitle.trim()) return;
     setSubmitting(true);
@@ -273,9 +199,9 @@ export default function WhiteboardEditor() {
         const newBoard = await res.json();
         setWhiteboards((prev) => [...prev, newBoard]);
         setCurrentWhiteboardId(newBoard.id);
-        toast.success('Board created!');
         setCreateBoardOpen(false);
         setBoardTitle('');
+        toast.success('Board created');
       } else {
         toast.error('Failed to create board');
       }
@@ -299,13 +225,13 @@ export default function WhiteboardEditor() {
         setWhiteboards((prev) =>
           prev.map((w) => (w.id === selectedBoard.id ? { ...w, title: boardTitle.trim() } : w))
         );
-        toast.success('Board renamed!');
         setRenameBoardOpen(false);
+        toast.success('Board renamed');
       } else {
-        toast.error('Failed to rename board');
+        toast.error('Failed to rename');
       }
     } catch {
-      toast.error('Failed to rename board');
+      toast.error('Failed to rename');
     } finally {
       setSubmitting(false);
     }
@@ -315,22 +241,20 @@ export default function WhiteboardEditor() {
     if (!selectedBoard) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/whiteboards?id=${selectedBoard.id}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/whiteboards?id=${selectedBoard.id}`, { method: 'DELETE' });
       if (res.ok) {
         const remaining = whiteboards.filter((w) => w.id !== selectedBoard.id);
         setWhiteboards(remaining);
         if (currentWhiteboardId === selectedBoard.id) {
           setCurrentWhiteboardId(remaining.length > 0 ? remaining[0].id : null);
         }
-        toast.success('Board deleted!');
         setDeleteBoardOpen(false);
+        toast.success('Board deleted');
       } else {
-        toast.error('Failed to delete board');
+        toast.error('Failed to delete');
       }
     } catch {
-      toast.error('Failed to delete board');
+      toast.error('Failed to delete');
     } finally {
       setSubmitting(false);
     }
@@ -341,42 +265,33 @@ export default function WhiteboardEditor() {
     setSidebarOpen(true);
   };
 
-  const toggleTheme = () => {
+  const toggleThemeMode = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  const getCloudStatusIcon = () => {
-    switch (cloudStatus) {
-      case 'saving':
-        return <Cloud className="h-3.5 w-3.5 text-muted-foreground animate-pulse" />;
-      case 'saved':
-        return <Cloud className="h-3.5 w-3.5 text-green-500" />;
-      case 'error':
-        return <CloudOff className="h-3.5 w-3.5 text-destructive" />;
-      default:
-        return <Cloud className="h-3.5 w-3.5 text-muted-foreground" />;
-    }
-  };
-
-  const getCloudStatusText = () => {
-    switch (cloudStatus) {
-      case 'saving':
-        return 'Syncing to cloud...';
-      case 'saved':
-        return 'Saved to cloud';
-      case 'error':
-        return 'Cloud sync failed';
-      default:
-        return '';
-    }
+  // ── Save status indicator ──
+  const saveIndicator = () => {
+    if (saveStatus === 'idle') return null;
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {saveStatus === 'saving' && <Save className="h-3.5 w-3.5 animate-pulse" />}
+        {saveStatus === 'saved' && <Save className="h-3.5 w-3.5 text-green-500" />}
+        {saveStatus === 'error' && <Save className="h-3.5 w-3.5 text-destructive" />}
+        <span>
+          {saveStatus === 'saving' && 'Saving…'}
+          {saveStatus === 'saved' && 'Saved'}
+          {saveStatus === 'error' && 'Save failed'}
+        </span>
+      </div>
+    );
   };
 
   return (
     <TooltipProvider delayDuration={200}>
       <div className="relative h-screen w-screen overflow-hidden bg-background">
-        {/* Top bar */}
-        <div className="absolute top-0 left-0 right-0 z-40 flex h-12 items-center justify-between border-b border-border bg-background/90 px-3 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
+        {/* ── Top bar ── */}
+        <header className="absolute inset-x-0 top-0 z-40 flex h-12 items-center justify-between border-b border-border bg-background/95 px-3 backdrop-blur-sm">
+          <div className="flex items-center gap-1.5">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goBack}>
@@ -386,65 +301,43 @@ export default function WhiteboardEditor() {
               <TooltipContent>Back to Projects</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-6" />
+            <Separator orientation="vertical" className="h-6 mx-1" />
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={toggleSidebar}
-                >
-                  {sidebarOpen ? (
-                    <PanelLeftClose className="h-4 w-4" />
-                  ) : (
-                    <PanelLeftOpen className="h-4 w-4" />
-                  )}
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>
+                  {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{sidebarOpen ? 'Collapse Sidebar' : 'Expand Sidebar'}</TooltipContent>
+              <TooltipContent>{sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-6" />
+            <Separator orientation="vertical" className="h-6 mx-1" />
 
             <div className="flex items-center gap-2 min-w-0">
               <div
                 className="h-3 w-3 rounded-full shrink-0"
                 style={{ backgroundColor: currentProject?.color || '#6366f1' }}
               />
-              <span className="text-sm font-medium truncate max-w-[200px]">
-                {currentProject?.name}
-              </span>
+              <span className="text-sm font-medium truncate max-w-[200px]">{currentProject?.name}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {saving && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {getCloudStatusIcon()}
-                <span>{getCloudStatusText()}</span>
-              </div>
-            )}
+            {saveIndicator()}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme}>
-                  {theme === 'dark' ? (
-                    <Sun className="h-4 w-4" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleThemeMode}>
+                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
-                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-              </TooltipContent>
+              <TooltipContent>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</TooltipContent>
             </Tooltip>
           </div>
-        </div>
+        </header>
 
-        {/* Sidebar */}
-        <div
+        {/* ── Sidebar ── */}
+        <aside
           className={`absolute top-12 left-0 bottom-0 z-30 transition-all duration-300 ease-in-out ${
             sidebarOpen ? 'w-64' : 'w-0'
           }`}
@@ -454,13 +347,12 @@ export default function WhiteboardEditor() {
               sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
           >
+            {/* Sidebar header */}
             <div className="flex h-12 items-center justify-between px-4">
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Layers className="h-4 w-4" />
                 <span>Boards</span>
-                <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs">
-                  {whiteboards.length}
-                </span>
+                <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs">{whiteboards.length}</span>
               </div>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -468,38 +360,41 @@ export default function WhiteboardEditor() {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
-                    onClick={() => {
-                      setBoardTitle('');
-                      setCreateBoardOpen(true);
-                    }}
+                    onClick={() => { setBoardTitle(''); setCreateBoardOpen(true); }}
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>New Board</TooltipContent>
+                <TooltipContent>New board</TooltipContent>
               </Tooltip>
             </div>
             <Separator />
+
+            {/* Board list */}
             <ScrollArea className="h-[calc(100%-49px)]">
               <div className="p-2 space-y-0.5">
                 {whiteboards.map((board) => (
                   <div
                     key={board.id}
-                    className={`group flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                    role="button"
+                    tabIndex={0}
+                    className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                       currentWhiteboardId === board.id
                         ? 'bg-primary text-primary-foreground'
                         : 'hover:bg-accent text-foreground'
                     }`}
                     onClick={() => setCurrentWhiteboardId(board.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') setCurrentWhiteboardId(board.id); }}
                   >
                     <FileText className="h-4 w-4 shrink-0" />
                     <span className="text-sm truncate flex-1">{board.title}</span>
+
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className={`h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${
+                          className={`h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity ${
                             currentWhiteboardId === board.id
                               ? 'hover:bg-primary-foreground/20'
                               : ''
@@ -539,10 +434,10 @@ export default function WhiteboardEditor() {
               </div>
             </ScrollArea>
           </div>
-        </div>
+        </aside>
 
-        {/* Whiteboard area */}
-        <div
+        {/* ── Canvas area ── */}
+        <main
           className={`absolute top-12 right-0 bottom-0 transition-all duration-300 ease-in-out ${
             sidebarOpen ? 'left-64' : 'left-0'
           }`}
@@ -561,15 +456,10 @@ export default function WhiteboardEditor() {
                   <LayoutGrid className="h-10 w-10 text-muted-foreground" />
                 </div>
                 <h3 className="text-lg font-semibold">No boards yet</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Create a board to start drawing
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">Create a board to start drawing</p>
                 <Button
                   className="mt-4 gap-2"
-                  onClick={() => {
-                    setBoardTitle('');
-                    setCreateBoardOpen(true);
-                  }}
+                  onClick={() => { setBoardTitle(''); setCreateBoardOpen(true); }}
                 >
                   <Plus className="h-4 w-4" />
                   Create Board
@@ -577,16 +467,16 @@ export default function WhiteboardEditor() {
               </div>
             </div>
           )}
-        </div>
+        </main>
 
-        {/* Create Board Dialog */}
+        {/* ── Create Board Dialog ── */}
         <Dialog open={createBoardOpen} onOpenChange={setCreateBoardOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Create New Board</DialogTitle>
-              <DialogDescription>Add a new whiteboard to your project.</DialogDescription>
+              <DialogDescription>Add a new whiteboard to this project.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-2 py-2">
+            <div className="py-2">
               <Input
                 placeholder="Board title"
                 value={boardTitle}
@@ -596,24 +486,22 @@ export default function WhiteboardEditor() {
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateBoardOpen(false)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setCreateBoardOpen(false)}>Cancel</Button>
               <Button onClick={handleCreateBoard} disabled={submitting || !boardTitle.trim()}>
-                {submitting ? 'Creating...' : 'Create'}
+                {submitting ? 'Creating…' : 'Create'}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Rename Board Dialog */}
+        {/* ── Rename Board Dialog ── */}
         <Dialog open={renameBoardOpen} onOpenChange={setRenameBoardOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Rename Board</DialogTitle>
               <DialogDescription>Enter a new name for this board.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-2 py-2">
+            <div className="py-2">
               <Input
                 placeholder="Board title"
                 value={boardTitle}
@@ -623,24 +511,21 @@ export default function WhiteboardEditor() {
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setRenameBoardOpen(false)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setRenameBoardOpen(false)}>Cancel</Button>
               <Button onClick={handleRenameBoard} disabled={submitting || !boardTitle.trim()}>
-                {submitting ? 'Saving...' : 'Save'}
+                {submitting ? 'Saving…' : 'Save'}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Delete Board Dialog */}
+        {/* ── Delete Board Dialog ── */}
         <AlertDialog open={deleteBoardOpen} onOpenChange={setDeleteBoardOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Board</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete &ldquo;{selectedBoard?.title}&rdquo;? This action
-                cannot be undone.
+                Are you sure you want to delete &ldquo;{selectedBoard?.title}&rdquo;? This cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -650,7 +535,7 @@ export default function WhiteboardEditor() {
                 disabled={submitting}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                {submitting ? 'Deleting...' : 'Delete'}
+                {submitting ? 'Deleting…' : 'Delete'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
