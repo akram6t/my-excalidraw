@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useTheme } from "next-themes";
+// Static CSS import — safe here because this component is only loaded client-side
+// via dynamic() with ssr:false in excalidraw.tsx
+import "@excalidraw/excalidraw/index.css";
 
 // ── Lazy-load Excalidraw entirely at runtime (no SSR, no static import) ──
 type ExcalidrawModule = React.ComponentType<Record<string, unknown>>;
@@ -41,7 +44,7 @@ export default function ExcalidrawWrapper({
 
   if (!ExcalidrawComponent) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-background">
+      <div className="flex items-center justify-center w-full h-full bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
           <p className="text-sm text-muted-foreground">Loading whiteboard…</p>
@@ -53,14 +56,24 @@ export default function ExcalidrawWrapper({
   const Excalidraw = ExcalidrawComponent;
 
   return (
-    <Excalidraw
-      key={whiteboardId || "default"}
-      initialData={initialData ?? undefined}
-      onChange={handleChange}
-      theme={resolvedTheme === "dark" ? "dark" : "light"}
-      excalidrawAPI={(api: unknown) => {
-        excalidrawAPIRef.current = api;
+    <div
+      className="excalidraw-wrapper"
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
       }}
-    />
+    >
+      <Excalidraw
+        key={whiteboardId || "default"}
+        initialData={initialData ?? undefined}
+        onChange={handleChange}
+        theme={resolvedTheme === "dark" ? "dark" : "light"}
+        excalidrawAPI={(api: unknown) => {
+          excalidrawAPIRef.current = api;
+        }}
+      />
+    </div>
   );
 }

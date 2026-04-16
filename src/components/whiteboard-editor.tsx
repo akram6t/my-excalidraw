@@ -59,7 +59,7 @@ import { toast } from 'sonner';
 const ExcalidrawWrapper = dynamic(() => import('./excalidraw'), {
   ssr: false,
   loading: () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-background">
+    <div className="flex items-center justify-center w-full h-full bg-background">
       <div className="flex flex-col items-center gap-4">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
         <p className="text-sm text-muted-foreground">Loading whiteboard…</p>
@@ -288,9 +288,13 @@ export default function WhiteboardEditor() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="relative h-screen w-screen overflow-hidden bg-background">
-        {/* ── Top bar ── */}
-        <header className="absolute inset-x-0 top-0 z-40 flex h-12 items-center justify-between border-b border-border bg-background/95 px-3 backdrop-blur-sm">
+      {/* Root: flex column, fills viewport exactly */}
+      <div
+        className="flex flex-col bg-background"
+        style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}
+      >
+        {/* ── Top bar: fixed height ── */}
+        <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background/95 px-3 backdrop-blur-sm z-40">
           <div className="flex items-center gap-1.5">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -336,211 +340,210 @@ export default function WhiteboardEditor() {
           </div>
         </header>
 
-        {/* ── Sidebar ── */}
-        <aside
-          className={`absolute top-12 left-0 bottom-0 z-30 transition-all duration-300 ease-in-out ${
-            sidebarOpen ? 'w-64' : 'w-0'
-          }`}
-        >
-          <div
-            className={`h-full border-r border-border bg-card transition-opacity duration-200 ${
-              sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
+        {/* ── Content: flex row, takes remaining space ── */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* ── Sidebar ── */}
+          <aside
+            className="shrink-0 border-r border-border bg-card z-30 transition-all duration-300 ease-in-out overflow-hidden"
+            style={{ width: sidebarOpen ? '16rem' : '0px' }}
           >
-            {/* Sidebar header */}
-            <div className="flex h-12 items-center justify-between px-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Layers className="h-4 w-4" />
-                <span>Boards</span>
-                <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs">{whiteboards.length}</span>
+            <div
+              className={`h-full transition-opacity duration-200 ${
+                sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+              style={{ width: '16rem' }}
+            >
+              {/* Sidebar header */}
+              <div className="flex h-12 items-center justify-between px-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Layers className="h-4 w-4" />
+                  <span>Boards</span>
+                  <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs">{whiteboards.length}</span>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => { setBoardTitle(''); setCreateBoardOpen(true); }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>New board</TooltipContent>
+                </Tooltip>
               </div>
-              <Tooltip>
-                <TooltipTrigger asChild>
+              <Separator />
+
+              {/* Board list */}
+              <ScrollArea className="h-[calc(100%-49px)]">
+                <div className="p-2 space-y-0.5">
+                  {whiteboards.map((board) => (
+                    <div
+                      key={board.id}
+                      role="button"
+                      tabIndex={0}
+                      className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        currentWhiteboardId === board.id
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-accent text-foreground'
+                      }`}
+                      onClick={() => setCurrentWhiteboardId(board.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') setCurrentWhiteboardId(board.id); }}
+                    >
+                      <FileText className="h-4 w-4 shrink-0" />
+                      <span className="text-sm truncate flex-1">{board.title}</span>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity ${
+                              currentWhiteboardId === board.id
+                                ? 'hover:bg-primary-foreground/20'
+                                : ''
+                            }`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-36">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBoard(board);
+                              setBoardTitle(board.title);
+                              setRenameBoardOpen(true);
+                            }}
+                          >
+                            <Pencil className="mr-2 h-3.5 w-3.5" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBoard(board);
+                              setDeleteBoardOpen(true);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-3.5 w-3.5" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </aside>
+
+          {/* ── Canvas area: flex-1, min-h-0 critical ── */}
+          <main className="flex-1 min-h-0 min-w-0 overflow-hidden">
+            {currentWhiteboardId ? (
+              <ExcalidrawWrapper
+                key={currentWhiteboardId}
+                initialData={whiteboardData}
+                whiteboardId={currentWhiteboardId}
+                onChange={handleExcalidrawChange}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <div className="text-center">
+                  <div className="mx-auto mb-4 rounded-2xl bg-muted p-6 w-fit">
+                    <LayoutGrid className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold">No boards yet</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Create a board to start drawing</p>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
+                    className="mt-4 gap-2"
                     onClick={() => { setBoardTitle(''); setCreateBoardOpen(true); }}
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-4 w-4" />
+                    Create Board
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>New board</TooltipContent>
-              </Tooltip>
-            </div>
-            <Separator />
-
-            {/* Board list */}
-            <ScrollArea className="h-[calc(100%-49px)]">
-              <div className="p-2 space-y-0.5">
-                {whiteboards.map((board) => (
-                  <div
-                    key={board.id}
-                    role="button"
-                    tabIndex={0}
-                    className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                      currentWhiteboardId === board.id
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-accent text-foreground'
-                    }`}
-                    onClick={() => setCurrentWhiteboardId(board.id)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') setCurrentWhiteboardId(board.id); }}
-                  >
-                    <FileText className="h-4 w-4 shrink-0" />
-                    <span className="text-sm truncate flex-1">{board.title}</span>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity ${
-                            currentWhiteboardId === board.id
-                              ? 'hover:bg-primary-foreground/20'
-                              : ''
-                          }`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="h-3 w-3" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-36">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedBoard(board);
-                            setBoardTitle(board.title);
-                            setRenameBoardOpen(true);
-                          }}
-                        >
-                          <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedBoard(board);
-                            setDeleteBoardOpen(true);
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        </aside>
-
-        {/* ── Canvas area ── */}
-        <main
-          className={`absolute top-12 right-0 bottom-0 transition-all duration-300 ease-in-out ${
-            sidebarOpen ? 'left-64' : 'left-0'
-          }`}
-        >
-          {currentWhiteboardId ? (
-            <ExcalidrawWrapper
-              key={currentWhiteboardId}
-              initialData={whiteboardData}
-              whiteboardId={currentWhiteboardId}
-              onChange={handleExcalidrawChange}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-center">
-                <div className="mx-auto mb-4 rounded-2xl bg-muted p-6 w-fit">
-                  <LayoutGrid className="h-10 w-10 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold">No boards yet</h3>
-                <p className="mt-1 text-sm text-muted-foreground">Create a board to start drawing</p>
-                <Button
-                  className="mt-4 gap-2"
-                  onClick={() => { setBoardTitle(''); setCreateBoardOpen(true); }}
-                >
-                  <Plus className="h-4 w-4" />
-                  Create Board
-                </Button>
               </div>
-            </div>
-          )}
-        </main>
-
-        {/* ── Create Board Dialog ── */}
-        <Dialog open={createBoardOpen} onOpenChange={setCreateBoardOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create New Board</DialogTitle>
-              <DialogDescription>Add a new whiteboard to this project.</DialogDescription>
-            </DialogHeader>
-            <div className="py-2">
-              <Input
-                placeholder="Board title"
-                value={boardTitle}
-                onChange={(e) => setBoardTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateBoard()}
-                autoFocus
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateBoardOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateBoard} disabled={submitting || !boardTitle.trim()}>
-                {submitting ? 'Creating…' : 'Create'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* ── Rename Board Dialog ── */}
-        <Dialog open={renameBoardOpen} onOpenChange={setRenameBoardOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Rename Board</DialogTitle>
-              <DialogDescription>Enter a new name for this board.</DialogDescription>
-            </DialogHeader>
-            <div className="py-2">
-              <Input
-                placeholder="Board title"
-                value={boardTitle}
-                onChange={(e) => setBoardTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRenameBoard()}
-                autoFocus
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRenameBoardOpen(false)}>Cancel</Button>
-              <Button onClick={handleRenameBoard} disabled={submitting || !boardTitle.trim()}>
-                {submitting ? 'Saving…' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* ── Delete Board Dialog ── */}
-        <AlertDialog open={deleteBoardOpen} onOpenChange={setDeleteBoardOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Board</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete &ldquo;{selectedBoard?.title}&rdquo;? This cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteBoard}
-                disabled={submitting}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                {submitting ? 'Deleting…' : 'Delete'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            )}
+          </main>
+        </div>
       </div>
+
+      {/* ── Create Board Dialog ── */}
+      <Dialog open={createBoardOpen} onOpenChange={setCreateBoardOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New Board</DialogTitle>
+            <DialogDescription>Add a new whiteboard to this project.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              placeholder="Board title"
+              value={boardTitle}
+              onChange={(e) => setBoardTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateBoard()}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateBoardOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateBoard} disabled={submitting || !boardTitle.trim()}>
+              {submitting ? 'Creating…' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Rename Board Dialog ── */}
+      <Dialog open={renameBoardOpen} onOpenChange={setRenameBoardOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename Board</DialogTitle>
+            <DialogDescription>Enter a new name for this board.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              placeholder="Board title"
+              value={boardTitle}
+              onChange={(e) => setBoardTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRenameBoard()}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameBoardOpen(false)}>Cancel</Button>
+            <Button onClick={handleRenameBoard} disabled={submitting || !boardTitle.trim()}>
+              {submitting ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Board Dialog ── */}
+      <AlertDialog open={deleteBoardOpen} onOpenChange={setDeleteBoardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Board</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &ldquo;{selectedBoard?.title}&rdquo;? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteBoard}
+              disabled={submitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {submitting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TooltipProvider>
   );
 }

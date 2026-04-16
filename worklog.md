@@ -54,3 +54,26 @@ Stage Summary:
   - If Tigris write access denied, automatically falls back to local SQLite DB
   - Public read URL: https://my-excalidraw.t3.tigrisfiles.io
   - Note: Current credentials appear to be read-only; write requires updated Tigris ACL
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix CanvasRenderingContext2D.setTransform: Canvas exceeds max size error
+
+Work Log:
+- Analyzed the root cause: Excalidraw canvas internally tries to match container size, but absolute-positioned containers in sandboxed iframe can compute to extremely large dimensions
+- Identified missing Excalidraw CSS import (correct path: @excalidraw/excalidraw/index.css)
+- Rewrote whiteboard-editor.tsx layout from absolute positioning to flexbox column layout for reliable dimension calculation
+- Added CSS constraints in globals.css: canvas max-width/max-height capped at 8192px, wrapper with overflow:hidden, min-width/min-height:0 for flex children
+- Added html/body height/width/overflow constraints to prevent unbounded viewport in sandboxed iframe
+- Fixed loading states to use flex layout instead of absolute positioning
+- Removed unnecessary wrapper div in page.tsx
+- Verified lint passes cleanly
+
+Stage Summary:
+- Fixed canvas overflow error with multi-layered approach:
+  1. Flexbox layout (replaces absolute positioning) for predictable dimension calculation
+  2. CSS canvas guards: max 8192px on all canvas elements inside .excalidraw-wrapper
+  3. overflow:hidden on html/body prevents viewport overflow in sandboxed environments
+  4. min-h-0 on flex children prevents flex minimum size inflation
+  5. Static CSS import for Excalidraw styles ensures proper layout from the start

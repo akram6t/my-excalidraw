@@ -7,10 +7,5 @@ import WhiteboardEditor from '@/components/whiteboard-editor';
 export default function Home() {
   const view = useAppStore((s) => s.view);
 
-  // key forces full remount → feels like navigating between separate pages
-  return (
-    <div key={view} className="h-screen w-screen overflow-hidden">
-      {view === 'editor' ? <WhiteboardEditor /> : <ProjectsGrid />}
-    </div>
-  );
+  return view === 'editor' ? <WhiteboardEditor /> : <ProjectsGrid />;
 }
