@@ -35,3 +35,10 @@ model Whiteboard {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Library {
+  id   String @id @default(cuid())
+  name String @unique
+  data String // JSON text of the .excalidrawlib file
+  createdAt DateTime @default(now())
+}

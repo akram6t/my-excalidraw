@@ -101,3 +101,26 @@ Stage Summary:
   1. Save behavior: onChange now saves to localStorage only (keyed by wb_scene_{boardId}). Explicit "Save" button in top bar uploads to server. Shows "Unsaved changes" indicator.
   2. Sidebar fix: useEffect for initializing whiteboards list now only depends on currentProject (not currentWhiteboardId), preventing the list from being overwritten after board creation.
   3. Content loading: Excalidraw only renders after data is available (isReady flag). Data loads from localStorage first for instant restore, then server data is fetched as fallback. New boards get empty scene {} immediately.
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Integrate Excalidraw library (.excalidrawlib) files with database storage and smooth loading
+
+Work Log:
+- Analyzed all 10 .excalidrawlib files: two formats found (older "library" format and newer "libraryItems" format)
+- Added Library model to Prisma schema (id, name, data, createdAt)
+- Created scripts/seed-libraries.ts to import all 10 library files into SQLite database
+- All 10 libraries seeded successfully (~2.9MB total: post-it, db-eng, algorithms, cloud, awesome-icons, data-viz, stick-figures, drwnio, architecture-diagram-components, software-architecture)
+- Created /api/libraries API route that converts both formats into Excalidraw LibraryItems format
+- Updated excalidraw-wrapper.tsx with cached library loading using excalidrawAPI.updateLibrary()
+- Libraries are loaded once into memory cache and reused across all Excalidraw instances
+- Lint passes cleanly
+
+Stage Summary:
+- Full library integration pipeline:
+  1. 10 excalidrawlib files stored in SQLite database via seed script (scripts/seed-libraries.ts)
+  2. API endpoint /api/libraries converts both "library" and "libraryItems" formats to unified LibraryItems
+  3. Client-side: libraries fetched once, cached in memory, injected via excalidrawAPI.updateLibrary({ merge: true, defaultStatus: "published" })
+  4. Users can open the Excalidraw library menu to browse all loaded libraries by name
+  5. To add new libraries: place .excalidrawlib file in upload/, run bun run scripts/seed-libraries.ts

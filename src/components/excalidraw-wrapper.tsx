@@ -9,6 +9,16 @@ import "@excalidraw/excalidraw/index.css";
 // ── Lazy-load Excalidraw entirely at runtime (no SSR, no static import) ──
 type ExcalidrawModule = React.ComponentType<Record<string, unknown>>;
 
+// Type for the excalidrawAPI
+interface ExcalidrawAPI {
+  updateLibrary: (opts: {
+    libraryItems: Array<Record<string, unknown>>;
+    merge?: boolean;
+    defaultStatus?: string;
+    openLibraryMenu?: boolean;
+  }) => Promise<void>;
+}
+
 interface ExcalidrawWrapperProps {
   /** Full excalidraw scene object: { elements, appState, files } */
   initialData?: Record<string, unknown> | null;
@@ -45,7 +55,6 @@ function sanitizeSceneData(
     ] as const) {
       const val = appState[mapField];
       if (typeof val !== "object" || val === null || Array.isArray(val)) {
-        // Remove entirely — Excalidraw initializes fresh
         delete appState[mapField];
       }
     }
@@ -73,6 +82,34 @@ function sanitizeSceneData(
   return data;
 }
 
+// Cache libraries in memory — load once, reuse across Excalidraw instances
+let librariesCache: Array<Record<string, unknown>> | null = null;
+let librariesLoading: Promise<Array<Record<string, unknown>> | null> | null = null;
+
+function fetchLibraries(): Promise<Array<Record<string, unknown>> | null> {
+  if (librariesCache) return Promise.resolve(librariesCache);
+  if (librariesLoading) return librariesLoading;
+
+  librariesLoading = fetch("/api/libraries")
+    .then((res) => {
+      if (!res.ok) return null;
+      return res.json();
+    })
+    .then((data) => {
+      if (data?.items && Array.isArray(data.items)) {
+        librariesCache = data.items;
+        return data.items;
+      }
+      return null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      librariesLoading = null;
+    });
+
+  return librariesLoading;
+}
+
 export default function ExcalidrawWrapper({
   initialData,
   whiteboardId,
@@ -80,7 +117,7 @@ export default function ExcalidrawWrapper({
 }: ExcalidrawWrapperProps) {
   const [ExcalidrawComponent, setExcalidrawComponent] =
     useState<ExcalidrawModule | null>(null);
-  const excalidrawAPIRef = useRef<unknown>(null);
+  const excalidrawAPIRef = useRef<ExcalidrawAPI | null>(null);
   const { resolvedTheme } = useTheme();
 
   // Load Excalidraw purely on client
@@ -104,6 +141,40 @@ export default function ExcalidrawWrapper({
     () => sanitizeSceneData(initialData),
     [initialData]
   );
+
+  // Load and inject libraries once Excalidraw API is ready
+  useEffect(() => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return;
+
+    // Already loaded? Skip.
+    if (librariesCache) {
+      if (librariesCache.length > 0) {
+        api.updateLibrary({
+          libraryItems: librariesCache,
+          merge: true,
+          defaultStatus: "published",
+        });
+      }
+      return;
+    }
+
+    // Fetch and inject
+    fetchLibraries().then((items) => {
+      if (items && items.length > 0 && excalidrawAPIRef.current) {
+        try {
+          excalidrawAPIRef.current.updateLibrary({
+            libraryItems: items,
+            merge: true,
+            defaultStatus: "published",
+          });
+          console.log(`Loaded ${items.length} library items`);
+        } catch (err) {
+          console.error("Failed to load libraries into Excalidraw:", err);
+        }
+      }
+    });
+  }, [!!excalidrawAPIRef.current]);
 
   if (!ExcalidrawComponent) {
     return (
@@ -134,7 +205,7 @@ export default function ExcalidrawWrapper({
         onChange={handleChange}
         theme={resolvedTheme === "dark" ? "dark" : "light"}
         excalidrawAPI={(api: unknown) => {
-          excalidrawAPIRef.current = api;
+          excalidrawAPIRef.current = api as ExcalidrawAPI;
         }}
       />
     </div>
