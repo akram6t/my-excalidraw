@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
 import { Project, Whiteboard } from '@/lib/models';
+import { getAuthUserId } from '@/lib/auth-helper';
 
-// GET all projects
-export async function GET() {
+// GET all projects for the authenticated user
+export async function GET(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
-    const projects = await Project.find().sort({ updatedAt: -1 }).lean();
+    const projects = await Project.find({ userId }).sort({ updatedAt: -1 }).lean();
 
     // Fetch whiteboards for each project
     const projectsWithBoards = await Promise.all(
@@ -46,9 +52,14 @@ export async function GET() {
   }
 }
 
-// POST create a new project
+// POST create a new project for the authenticated user
 export async function POST(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
     const body = await request.json();
@@ -62,6 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     const project = await Project.create({
+      userId,
       name: name.trim(),
       description: description?.trim() || null,
       color: color || '#6366f1',
@@ -105,9 +117,14 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT update a project
+// PUT update a project (only if owned by the authenticated user)
 export async function PUT(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
     const body = await request.json();
@@ -125,7 +142,13 @@ export async function PUT(request: NextRequest) {
     if (description !== undefined) updateData.description = description?.trim() || null;
     if (color !== undefined) updateData.color = color;
 
-    const project = await Project.findByIdAndUpdate(id, updateData, { new: true }).lean();
+    // Only update if the project belongs to the authenticated user
+    const project = await Project.findOneAndUpdate(
+      { _id: id, userId },
+      updateData,
+      { new: true }
+    ).lean();
+
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
@@ -160,9 +183,14 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE a project
+// DELETE a project (only if owned by the authenticated user)
 export async function DELETE(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
     const { searchParams } = new URL(request.url);
@@ -175,10 +203,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Only delete if the project belongs to the authenticated user
+    const project = await Project.findOneAndDelete({ _id: id, userId }).lean();
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
     // Delete all whiteboards belonging to this project
     await Whiteboard.deleteMany({ projectId: id });
-    // Delete the project
-    await Project.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

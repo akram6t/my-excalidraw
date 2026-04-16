@@ -13,6 +13,7 @@ export interface IUser extends Document {
 }
 
 export interface IProject extends Document {
+  userId: string;
   name: string;
   description: string | null;
   color: string;
@@ -50,6 +51,7 @@ const UserSchema = new Schema<IUser>(
 
 const ProjectSchema = new Schema<IProject>(
   {
+    userId: { type: String, required: true, index: true },
     name: { type: String, required: true },
     description: { type: String, default: null },
     color: { type: String, default: '#6366f1' },

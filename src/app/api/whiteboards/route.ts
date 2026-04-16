@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/mongodb';
-import { Whiteboard } from '@/lib/models';
+import { Whiteboard, Project } from '@/lib/models';
+import { getAuthUserId } from '@/lib/auth-helper';
 
-// GET whiteboard by ID
+// Helper: verify that a project belongs to the authenticated user
+async function verifyProjectOwnership(
+  projectId: string,
+  userId: string
+): Promise<boolean> {
+  const project = await Project.findOne({ _id: projectId, userId }).lean();
+  return !!project;
+}
+
+// GET whiteboard by ID (verify ownership through its project)
 export async function GET(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
     const { searchParams } = new URL(request.url);
@@ -17,6 +32,12 @@ export async function GET(request: NextRequest) {
     const whiteboard = await Whiteboard.findById(id).lean();
     if (!whiteboard) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    // Verify ownership: the project must belong to this user
+    const isOwner = await verifyProjectOwnership(whiteboard.projectId, userId);
+    if (!isOwner) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Parse stored JSON string into an object for the frontend
@@ -40,9 +61,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST create whiteboard
+// POST create whiteboard (verify project ownership)
 export async function POST(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
     const body = await request.json();
@@ -50,6 +76,12 @@ export async function POST(request: NextRequest) {
 
     if (!title || !projectId) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    }
+
+    // Verify the project belongs to this user
+    const isOwner = await verifyProjectOwnership(projectId, userId);
+    if (!isOwner) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get the max order for this project
@@ -81,9 +113,14 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT update whiteboard (title and/or scene data)
+// PUT update whiteboard (verify ownership through its project)
 export async function PUT(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
     const body = await request.json();
@@ -91,6 +128,18 @@ export async function PUT(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    }
+
+    // Find the whiteboard first to get its projectId
+    const existing = await Whiteboard.findById(id).lean();
+    if (!existing) {
+      return NextResponse.json({ error: 'Whiteboard not found' }, { status: 404 });
+    }
+
+    // Verify ownership
+    const isOwner = await verifyProjectOwnership(existing.projectId, userId);
+    if (!isOwner) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const updateData: Record<string, unknown> = {};
@@ -101,18 +150,15 @@ export async function PUT(request: NextRequest) {
     }
 
     const whiteboard = await Whiteboard.findByIdAndUpdate(id, updateData, { new: true }).lean();
-    if (!whiteboard) {
-      return NextResponse.json({ error: 'Whiteboard not found' }, { status: 404 });
-    }
 
     return NextResponse.json({
-      id: whiteboard._id.toString(),
-      title: whiteboard.title,
-      data: whiteboard.data,
-      order: whiteboard.order,
-      projectId: whiteboard.projectId,
-      createdAt: whiteboard.createdAt.toISOString(),
-      updatedAt: whiteboard.updatedAt.toISOString(),
+      id: whiteboard!._id.toString(),
+      title: whiteboard!.title,
+      data: whiteboard!.data,
+      order: whiteboard!.order,
+      projectId: whiteboard!.projectId,
+      createdAt: whiteboard!.createdAt.toISOString(),
+      updatedAt: whiteboard!.updatedAt.toISOString(),
     });
   } catch (error) {
     console.error('PUT whiteboard error:', error);
@@ -120,9 +166,14 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE whiteboard
+// DELETE whiteboard (verify ownership through its project)
 export async function DELETE(request: NextRequest) {
   try {
+    const userId = await getAuthUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     await connectDB();
 
     const { searchParams } = new URL(request.url);
@@ -130,6 +181,17 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    }
+
+    // Find the whiteboard first to verify ownership
+    const existing = await Whiteboard.findById(id).lean();
+    if (!existing) {
+      return NextResponse.json({ error: 'Whiteboard not found' }, { status: 404 });
+    }
+
+    const isOwner = await verifyProjectOwnership(existing.projectId, userId);
+    if (!isOwner) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await Whiteboard.findByIdAndDelete(id);

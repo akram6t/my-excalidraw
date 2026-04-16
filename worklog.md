@@ -147,3 +147,36 @@ Stage Summary:
 - Library feature restored with cached loading via /api/libraries
 - Server running on port 3000, HTTP 200 confirmed
 
+---
+Task ID: 2
+Agent: Main Agent
+Task: Add user-scoped authentication and authorization to all resources
+
+Work Log:
+- Reviewed existing auth infrastructure (NextAuth, User model, login/signup/forgot-password UI, AuthProvider)
+- Added `userId` field to Project Mongoose schema with index
+- Created `src/lib/auth-helper.ts` with `getAuthUserId()` using NextAuth JWT `getToken()`
+- Rewrote `/api/projects` route: all 4 methods (GET/POST/PUT/DELETE) now verify JWT and scope by userId
+  - GET: `Project.find({ userId })` — only returns projects belonging to logged-in user
+  - POST: sets `userId` from session when creating project
+  - PUT: uses `findOneAndUpdate({ _id: id, userId })` — only updates owned projects
+  - DELETE: uses `findOneAndDelete({ _id: id, userId })` — only deletes owned projects
+- Rewrote `/api/whiteboards` route: all 4 methods verify ownership through parent project
+  - Added `verifyProjectOwnership()` helper that checks project belongs to authenticated user
+  - GET: loads whiteboard, then verifies its project belongs to the user
+  - POST: verifies project ownership before creating whiteboard
+  - PUT: finds whiteboard, verifies project ownership, then updates
+  - DELETE: finds whiteboard, verifies project ownership, then deletes
+- Lint passes cleanly
+- Auth flow: NextAuth JWT cookies are automatically sent with fetch requests, no frontend changes needed
+
+Stage Summary:
+- Full user-scoped resource authorization implemented:
+  1. Projects are now tied to users via `userId` field on creation
+  2. GET /api/projects only returns the authenticated user's projects
+  3. PUT/DELETE /api/projects verify ownership before modifying/deleting
+  4. All whiteboard operations verify ownership through the parent project
+  5. Unauthenticated API calls return 401 Unauthorized
+  6. Login/Signup/Forgot Password/Reset Password UI pages already existed and work
+  7. Session managed via NextAuth JWT cookies (automatic with fetch)
+
