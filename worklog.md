@@ -209,3 +209,37 @@ Stage Summary:
 - Optimization: fetched once per session, cached in memory, deduplicated, lazy-loaded after Excalidraw mounts
 - Libraries appear automatically in Excalidraw's library menu when user opens a whiteboard
 
+---
+Task ID: 4
+Agent: Main Agent
+Task: Migrate from Zustand view switching to file-based routing with landing page
+
+Work Log:
+- Created beautiful landing page at / with hero section, gradient text, features grid, CTA, and footer
+- Created /login page route
+- Created /signup page route
+- Created /forgot-password page route
+- Created /reset-password page route
+- Created /projects page (auth-protected) showing user's projects grid
+- Created /projects/[projectId] page (auth-protected) with whiteboard editor
+- Updated projects-grid.tsx: navigation uses router.push('/projects/{id}') instead of Zustand setView
+- Updated whiteboard-editor.tsx: back button uses router.push('/projects') instead of Zustand setView
+- Updated all auth forms: navigation uses router.push() instead of Zustand setAuthView
+- Removed unused useAppStore imports from auth form components
+- Updated auth-provider: simplified, no more setAuthView on unauthenticated
+- Lint passes cleanly
+- Committed and pushed to GitHub
+
+Stage Summary:
+- Complete file-based routing architecture:
+  1. / — Beautiful marketing landing page (public, no auth required)
+  2. /login — Sign in form
+  3. /signup — Create account form
+  4. /forgot-password — Password reset request
+  5. /reset-password — Set new password
+  6. /projects — Auth-protected project dashboard (redirects to /login if not authenticated)
+  7. /projects/[projectId] — Auth-protected whiteboard editor (redirects to /login if not authenticated)
+- All navigation uses Next.js useRouter (no more Zustand view switching)
+- Landing page features: gradient hero, animated sections (framer-motion), feature cards, CTA, footer with GitHub link
+- Auth pages auto-redirect to /projects after successful login/signup
+
