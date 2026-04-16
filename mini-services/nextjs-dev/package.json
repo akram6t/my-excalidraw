@@ -1,7 +1,0 @@
-{
-  "name": "nextjs-dev-runner",
-  "scripts": {
-    "dev": "cd /home/z/my-project && next dev -p 3000 --turbopack"
-  },
-  "dependencies": {}
-}
