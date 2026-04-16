@@ -32,28 +32,36 @@ function sanitizeSceneData(
     data.elements = Array.isArray(data.elements) ? data.elements : [];
   }
 
-  // appState — collaborators must be an array (Excalidraw calls .forEach on it)
+  // appState — strip all fields that are objects/maps or arrays and can break
+  // after JSON.stringify/parse. Excalidraw will re-initialize them with defaults.
   if (data.appState && typeof data.appState === "object") {
     const appState = { ...(data.appState as Record<string, unknown>) };
+
+    // These are Record<id, boolean> maps — must be objects, NOT null/arrays
+    for (const mapField of [
+      "selectedElementIds",
+      "selectedGroupIds",
+      "bindingElementIds",
+    ] as const) {
+      const val = appState[mapField];
+      if (typeof val !== "object" || val === null || Array.isArray(val)) {
+        // Remove entirely — Excalidraw initializes fresh
+        delete appState[mapField];
+      }
+    }
+
+    // collaborators must be an array
     if (!Array.isArray(appState.collaborators)) {
-      appState.collaborators = [];
+      delete appState.collaborators;
     }
-    // Ensure other potential array fields are arrays
-    if (!Array.isArray(appState.selectedElementIds)) {
-      appState.selectedElementIds = null;
+
+    // editingGroupId and pendingImageElementId are strings, keep if string
+    for (const strField of ["editingGroupId", "pendingImageElementId"] as const) {
+      if (typeof appState[strField] !== "string") {
+        delete appState[strField];
+      }
     }
-    if (!Array.isArray(appState.selectedGroupIds)) {
-      appState.selectedGroupIds = null;
-    }
-    if (!Array.isArray(appState.bindingElementIds)) {
-      appState.bindingElementIds = null;
-    }
-    if (!Array.isArray(appState.editingGroupId)) {
-      appState.editingGroupId = null;
-    }
-    if (!Array.isArray(appState.pendingImageElementId)) {
-      appState.pendingImageElementId = null;
-    }
+
     data.appState = appState;
   }
 
