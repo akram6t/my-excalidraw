@@ -77,3 +77,27 @@ Stage Summary:
   3. overflow:hidden on html/body prevents viewport overflow in sandboxed environments
   4. min-h-0 on flex children prevents flex minimum size inflation
   5. Static CSS import for Excalidraw styles ensures proper layout from the start
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix save spam, sidebar not showing new items, and whiteboard content not persisting
+
+Work Log:
+- Identified Bug 1: handleExcalidrawChange was auto-saving to server on every debounced change (800ms) — replaced with localStorage-only saves
+- Identified Bug 2: useEffect for populating whiteboards had currentWhiteboardId in dependency array — when setCurrentWhiteboardId(newBoard.id) was called after creation, the effect re-ran and reset whiteboards back to old list from currentProject.whiteboards
+- Identified Bug 3: loadBoard() set whiteboardData=null first, causing Excalidraw to remount with empty data before async fetch completed — Excalidraw's initialData is only read on mount
+- Rewrote whiteboard-editor.tsx with localStorage-first data strategy
+- Added Save button in top bar that uploads localStorage data to server
+- Added "Unsaved changes" indicator with CloudOff icon
+- Added isReady flag — Excalidraw only renders once data is loaded from localStorage or server
+- Load priority: localStorage (instant) → server fallback
+- Removed currentWhiteboardId from sidebar population useEffect dependency array
+- Cleaned up unused eslint-disable directives
+- Verified lint passes cleanly, app compiles successfully
+
+Stage Summary:
+- Three bugs fixed in whiteboard-editor.tsx:
+  1. Save behavior: onChange now saves to localStorage only (keyed by wb_scene_{boardId}). Explicit "Save" button in top bar uploads to server. Shows "Unsaved changes" indicator.
+  2. Sidebar fix: useEffect for initializing whiteboards list now only depends on currentProject (not currentWhiteboardId), preventing the list from being overwritten after board creation.
+  3. Content loading: Excalidraw only renders after data is available (isReady flag). Data loads from localStorage first for instant restore, then server data is fetched as fallback. New boards get empty scene {} immediately.
