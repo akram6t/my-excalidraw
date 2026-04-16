@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAppStore } from '@/store/app-store';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +22,7 @@ export default function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
-  const { setAuthView } = useAppStore();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +49,7 @@ export default function ResetPasswordForm() {
       const token = sessionStorage.getItem('resetToken');
       if (!token) {
         toast.error('Invalid or missing reset token');
-        setAuthView('forgot-password');
+        router.push('/forgot-password');
         return;
       }
 
@@ -87,7 +87,7 @@ export default function ResetPasswordForm() {
             <CardDescription>Your password has been reset successfully.</CardDescription>
           </CardHeader>
           <CardFooter>
-            <Button className="w-full" onClick={() => setAuthView('login')}>
+            <Button className="w-full" onClick={() => router.push('/login')}>
               Sign In With New Password
             </Button>
           </CardFooter>
@@ -150,7 +150,7 @@ export default function ResetPasswordForm() {
             <button
               type="button"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setAuthView('login')}
+              onClick={() => router.push('/login')}
             >
               Back to Sign In
             </button>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAppStore } from '@/store/app-store';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,7 +20,7 @@ export default function ForgotPasswordForm() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const { setAuthView } = useAppStore();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,11 +84,11 @@ export default function ForgotPasswordForm() {
           <CardFooter className="flex-col gap-3">
             <Button
               className="w-full"
-              onClick={() => setAuthView('reset-password')}
+              onClick={() => router.push('/reset-password')}
             >
               Set New Password
             </Button>
-            <Button variant="outline" className="w-full" onClick={() => setAuthView('login')}>
+            <Button variant="outline" className="w-full" onClick={() => router.push('/login')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Sign In
             </Button>
@@ -133,7 +133,7 @@ export default function ForgotPasswordForm() {
             <button
               type="button"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
-              onClick={() => setAuthView('login')}
+              onClick={() => router.push('/login')}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to Sign In

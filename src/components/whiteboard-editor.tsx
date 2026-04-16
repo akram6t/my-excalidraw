@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAppStore, type Whiteboard } from '@/store/app-store';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
@@ -104,9 +105,9 @@ export default function WhiteboardEditor() {
     sidebarOpen,
     toggleSidebar,
     setSidebarOpen,
-    setView,
   } = useAppStore();
 
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
 
   // ── Local state ──
@@ -331,7 +332,7 @@ export default function WhiteboardEditor() {
   };
 
   const goBack = () => {
-    setView('projects');
+    router.push('/projects');
     setSidebarOpen(true);
   };
 

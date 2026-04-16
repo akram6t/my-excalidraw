@@ -7,7 +7,7 @@ import { useAppStore, type AuthUser } from '@/store/app-store';
 
 function AuthSync({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession();
-  const { setUser, setAuthView, isAuthenticated } = useAppStore();
+  const { setUser, isAuthenticated } = useAppStore();
 
   useEffect(() => {
     if (status === 'authenticated' && session?.user) {
@@ -19,11 +19,8 @@ function AuthSync({ children }: { children: ReactNode }) {
       setUser(authUser);
     } else if (status === 'unauthenticated') {
       setUser(null);
-      if (isAuthenticated) {
-        setAuthView('login');
-      }
     }
-  }, [session, status, setUser, setAuthView, isAuthenticated]);
+  }, [session, status, setUser, isAuthenticated]);
 
   return <>{children}</>;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAppStore, type Project } from '@/store/app-store';
 import { signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
@@ -62,8 +63,8 @@ export default function ProjectsGrid() {
   const [formData, setFormData] = useState({ name: '', description: '', color: '#6366f1' });
   const [submitting, setSubmitting] = useState(false);
 
+  const router = useRouter();
   const setCurrentProject = useAppStore((s) => s.setCurrentProject);
-  const setView = useAppStore((s) => s.setView);
   const user = useAppStore((s) => s.user);
 
   const fetchProjects = useCallback(async () => {
@@ -103,7 +104,7 @@ export default function ProjectsGrid() {
         setFormData({ name: '', description: '', color: '#6366f1' });
         // Navigate to the project
         setCurrentProject(project);
-        setView('editor');
+        router.push(`/projects/${project.id}`);
       } else {
         toast.error('Failed to create project');
       }
@@ -160,7 +161,7 @@ export default function ProjectsGrid() {
 
   const openProject = (project: Project) => {
     setCurrentProject(project);
-    setView('editor');
+    router.push(`/projects/${project.id}`);
   };
 
   const openEditDialog = (project: Project) => {

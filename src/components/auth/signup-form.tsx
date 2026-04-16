@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import { useAppStore } from '@/store/app-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,7 +24,7 @@ export default function SignupForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { setAuthView } = useAppStore();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +74,9 @@ export default function SignupForm() {
 
       if (result?.error) {
         toast.error(result.error);
-        setAuthView('login');
+        router.push('/login');
+      } else {
+        router.push('/projects');
       }
     } catch {
       toast.error('Something went wrong. Please try again.');
@@ -161,7 +163,7 @@ export default function SignupForm() {
               <button
                 type="button"
                 className="text-primary hover:underline font-medium"
-                onClick={() => setAuthView('login')}
+                onClick={() => router.push('/login')}
               >
                 Sign in
               </button>

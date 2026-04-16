@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import { useAppStore } from '@/store/app-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +22,7 @@ export default function LoginForm() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { setAuthView } = useAppStore();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +43,7 @@ export default function LoginForm() {
         toast.error(result.error);
       } else if (result?.ok) {
         toast.success('Welcome back!');
+        router.push('/projects');
       }
     } catch {
       toast.error('Something went wrong. Please try again.');
@@ -81,7 +82,7 @@ export default function LoginForm() {
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setAuthView('forgot-password')}
+                  onClick={() => router.push('/forgot-password')}
                 >
                   Forgot password?
                 </button>
@@ -116,7 +117,7 @@ export default function LoginForm() {
               <button
                 type="button"
                 className="text-primary hover:underline font-medium"
-                onClick={() => setAuthView('signup')}
+                onClick={() => router.push('/signup')}
               >
                 Create one
               </button>
