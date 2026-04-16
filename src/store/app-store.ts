@@ -20,9 +20,23 @@ export interface Whiteboard {
   updatedAt: string;
 }
 
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+type AuthView = 'login' | 'signup' | 'forgot-password' | 'reset-password';
 type AppView = 'projects' | 'editor';
 
 interface AppState {
+  // Auth
+  authView: AuthView;
+  setAuthView: (view: AuthView) => void;
+  user: AuthUser | null;
+  setUser: (user: AuthUser | null) => void;
+  isAuthenticated: boolean;
+
   // Navigation
   view: AppView;
   setView: (view: AppView) => void;
@@ -42,6 +56,13 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
+  // Auth
+  authView: 'login',
+  setAuthView: (authView) => set({ authView }),
+  user: null,
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
+  isAuthenticated: false,
+
   // Navigation
   view: 'projects',
   setView: (view) => set({ view }),

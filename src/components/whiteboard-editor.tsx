@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, type Whiteboard } from '@/store/app-store';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
+import { signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -48,6 +49,7 @@ import {
   Save,
   Upload,
   CloudOff,
+  LogOut,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -337,6 +339,10 @@ export default function WhiteboardEditor() {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/' });
+  };
+
   return (
     <TooltipProvider delayDuration={200}>
       {/* Root: flex column, fills viewport exactly */}
@@ -425,6 +431,15 @@ export default function WhiteboardEditor() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleLogout}>
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Sign out</TooltipContent>
             </Tooltip>
           </div>
         </header>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore, type Project } from '@/store/app-store';
+import { signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,8 @@ import {
   LayoutGrid,
   Clock,
   Layers,
+  LogOut,
+  User,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -61,6 +64,7 @@ export default function ProjectsGrid() {
 
   const setCurrentProject = useAppStore((s) => s.setCurrentProject);
   const setView = useAppStore((s) => s.setView);
+  const user = useAppStore((s) => s.user);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -204,10 +208,27 @@ export default function ProjectsGrid() {
               <p className="text-xs text-muted-foreground">Manage your whiteboard projects</p>
             </div>
           </div>
-          <Button onClick={openCreateDialog} className="gap-2">
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">New Project</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 mr-2 text-sm text-muted-foreground">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
+                <User className="h-3.5 w-3.5" />
+              </div>
+              <span className="max-w-[120px] truncate">{user?.name}</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => signOut({ callbackUrl: '/' })}
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+            <Button onClick={openCreateDialog} className="gap-2">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">New Project</span>
+            </Button>
+          </div>
         </div>
       </header>
 
