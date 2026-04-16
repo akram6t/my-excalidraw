@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import LoginForm from '@/components/auth/login-form';
 import SignupForm from '@/components/auth/signup-form';
 import ForgotPasswordForm from '@/components/auth/forgot-password-form';
@@ -8,7 +9,22 @@ import { useAppStore } from '@/store/app-store';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const { authView } = useAppStore();
+  const { isAuthenticated, authView } = useAppStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/projects');
+    }
+  }, [isAuthenticated, router]);
+
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
+      </div>
+    );
+  }
 
   switch (authView) {
     case 'signup':
