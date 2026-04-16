@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import dynamic from 'next/dynamic';
+import dynamic from "next/dynamic";
 
 const ExcalidrawWrapper = dynamic(
-  () => import('./excalidraw-wrapper'),
+  () => import("./excalidraw-wrapper"),
   {
     ssr: false,
     loading: () => (
