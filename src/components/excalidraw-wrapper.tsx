@@ -86,23 +86,6 @@ export default function ExcalidrawWrapper({
     );
   }
 
-  const Excalidraw = ExcalidrawComponent as React.ComponentType<{
-    initialData?: Record<string, unknown>;
-    onChange?: (elements: unknown, appState: unknown, files: unknown) => void;
-    theme?: 'light' | 'dark';
-    excalidrawAPI?: (api: ExcalidrawImperativeAPI) => void;
-    key?: string;
-    UIOptions?: {
-      canvasActions?: {
-        loadScene?: boolean;
-        export?: boolean;
-        theme?: boolean;
-        changeViewBackgroundColor?: boolean;
-        clearCanvas?: boolean;
-      };
-    };
-  }>;
-
   return (
     <Excalidraw
       key={whiteboardId || 'default'}
@@ -111,15 +94,6 @@ export default function ExcalidrawWrapper({
       theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
       excalidrawAPI={(api) => {
         excalidrawAPIRef.current = api;
-      }}
-      UIOptions={{
-        canvasActions: {
-          loadScene: true,
-          export: true,
-          theme: false,
-          changeViewBackgroundColor: true,
-          clearCanvas: true,
-        },
       }}
     />
   );
