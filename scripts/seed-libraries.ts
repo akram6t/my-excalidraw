@@ -1,8 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import mongoose from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const prisma = new PrismaClient();
+const MONGODB_URI = process.env.MONGODB_URI!;
+const DB_NAME = process.env.DB_NAME || 'my-excalidraw';
 
 const LIBRARY_DIR = path.join(process.cwd(), 'upload');
 
@@ -19,8 +20,21 @@ const LIBRARY_FILES = [
   'software-architecture.excalidrawlib',
 ];
 
+const LibrarySchema = new mongoose.Schema(
+  { name: { type: String, required: true, unique: true }, data: { type: String, required: true } },
+  { timestamps: true }
+);
+
 async function seed() {
-  console.log('Seeding libraries...\n');
+  console.log('Connecting to MongoDB...');
+  await mongoose.connect(MONGODB_URI, { dbName: DB_NAME });
+  console.log('Connected!\n');
+
+  const Library = mongoose.models.Library || mongoose.model('Library', LibrarySchema);
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
 
   for (const filename of LIBRARY_FILES) {
     const filePath = path.join(LIBRARY_DIR, filename);
@@ -28,6 +42,7 @@ async function seed() {
 
     if (!fs.existsSync(filePath)) {
       console.log(`  ⚠ Skipped ${filename} (file not found)`);
+      skipped++;
       continue;
     }
 
@@ -35,34 +50,43 @@ async function seed() {
 
     try {
       const parsed = JSON.parse(data);
-      // Accept both "library" (older) and "libraryItems" (newer) format
       const hasLibrary = parsed.library && Array.isArray(parsed.library);
       const hasLibraryItems = parsed.libraryItems && Array.isArray(parsed.libraryItems);
       if (!hasLibrary && !hasLibraryItems) {
         console.log(`  ⚠ Skipped ${filename} (invalid library format)`);
+        skipped++;
         continue;
       }
     } catch {
       console.log(`  ⚠ Skipped ${filename} (invalid JSON)`);
+      skipped++;
       continue;
     }
 
-    await prisma.library.upsert({
-      where: { name },
-      update: { data },
-      create: { name, data },
-    });
-
-    const sizeKB = Math.round(data.length / 1024);
-    console.log(`  ✓ ${name} (${sizeKB}KB, ${filename})`);
+    const existing = await Library.findOne({ name }).lean();
+    if (existing) {
+      await Library.updateOne({ name }, { data });
+      updated++;
+      const sizeKB = Math.round(data.length / 1024);
+      console.log(`  ↻ ${name} (${sizeKB}KB) — updated`);
+    } else {
+      await Library.create({ name, data });
+      created++;
+      const sizeKB = Math.round(data.length / 1024);
+      console.log(`  ✓ ${name} (${sizeKB}KB) — created`);
+    }
   }
 
-  console.log('\nDone!');
+  console.log(`\nDone! ${created} created, ${updated} updated, ${skipped} skipped.`);
+
+  const total = await Library.countDocuments();
+  console.log(`Total libraries in DB: ${total}`);
+
+  await mongoose.disconnect();
 }
 
 seed()
   .catch((e) => {
     console.error('Seed error:', e);
     process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+  });
