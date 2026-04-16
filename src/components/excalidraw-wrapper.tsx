@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useTheme } from "next-themes";
 // Static CSS import — safe here because this component is only loaded client-side
 // via dynamic() with ssr:false in excalidraw.tsx
@@ -14,6 +14,55 @@ interface ExcalidrawWrapperProps {
   initialData?: Record<string, unknown> | null;
   whiteboardId: string | null;
   onChange: (elements: unknown, appState: unknown, files: unknown) => void;
+}
+
+/**
+ * Sanitize scene data to ensure all fields match Excalidraw's expected types.
+ * JSON.stringify/parse can turn arrays into objects, empty arrays into nulls, etc.
+ */
+function sanitizeSceneData(
+  raw: Record<string, unknown> | null | undefined
+): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+
+  const data = { ...raw };
+
+  // elements must be an array
+  if (!Array.isArray(data.elements)) {
+    data.elements = Array.isArray(data.elements) ? data.elements : [];
+  }
+
+  // appState — collaborators must be an array (Excalidraw calls .forEach on it)
+  if (data.appState && typeof data.appState === "object") {
+    const appState = { ...(data.appState as Record<string, unknown>) };
+    if (!Array.isArray(appState.collaborators)) {
+      appState.collaborators = [];
+    }
+    // Ensure other potential array fields are arrays
+    if (!Array.isArray(appState.selectedElementIds)) {
+      appState.selectedElementIds = null;
+    }
+    if (!Array.isArray(appState.selectedGroupIds)) {
+      appState.selectedGroupIds = null;
+    }
+    if (!Array.isArray(appState.bindingElementIds)) {
+      appState.bindingElementIds = null;
+    }
+    if (!Array.isArray(appState.editingGroupId)) {
+      appState.editingGroupId = null;
+    }
+    if (!Array.isArray(appState.pendingImageElementId)) {
+      appState.pendingImageElementId = null;
+    }
+    data.appState = appState;
+  }
+
+  // files must be an object (or null)
+  if (data.files && typeof data.files !== "object") {
+    data.files = {};
+  }
+
+  return data;
 }
 
 export default function ExcalidrawWrapper({
@@ -42,6 +91,12 @@ export default function ExcalidrawWrapper({
     [onChange]
   );
 
+  // Sanitize data once — memoized so it doesn't change on re-renders
+  const safeInitialData = useMemo(
+    () => sanitizeSceneData(initialData),
+    [initialData]
+  );
+
   if (!ExcalidrawComponent) {
     return (
       <div className="flex items-center justify-center w-full h-full bg-background">
@@ -67,7 +122,7 @@ export default function ExcalidrawWrapper({
     >
       <Excalidraw
         key={whiteboardId || "default"}
-        initialData={initialData ?? undefined}
+        initialData={safeInitialData}
         onChange={handleChange}
         theme={resolvedTheme === "dark" ? "dark" : "light"}
         excalidrawAPI={(api: unknown) => {
