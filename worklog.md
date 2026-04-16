@@ -124,3 +124,26 @@ Stage Summary:
   3. Client-side: libraries fetched once, cached in memory, injected via excalidrawAPI.updateLibrary({ merge: true, defaultStatus: "published" })
   4. Users can open the Excalidraw library menu to browse all loaded libraries by name
   5. To add new libraries: place .excalidrawlib file in upload/, run bun run scripts/seed-libraries.ts
+---
+Task ID: 1
+Agent: Main Agent
+Task: Replace SQLite with MongoDB and add back library feature
+
+Work Log:
+- Installed mongoose@9.4.1
+- Created src/lib/mongodb.ts (connection with global caching)
+- Created src/lib/models.ts (Project, Whiteboard, Library Mongoose schemas)
+- Rewrote /api/projects/route.ts (GET/POST/PUT/DELETE using MongoDB)
+- Rewrote /api/whiteboards/route.ts (GET/POST/PUT/DELETE using MongoDB)
+- Rewrote /api/libraries/route.ts (GET/POST/DELETE using MongoDB)
+- Added back library feature to excalidraw-wrapper.tsx (excalidrawAPI ref + updateLibrary)
+- Updated .env with MongoDB URI and DB_NAME
+- Verified MongoDB connection works and APIs return correct data
+
+Stage Summary:
+- SQLite/Prisma fully replaced with MongoDB Atlas (mongoose)
+- Database: my-excalidraw on loundry-cluster MongoDB Atlas
+- All CRUD APIs working with MongoDB
+- Library feature restored with cached loading via /api/libraries
+- Server running on port 3000, HTTP 200 confirmed
+
