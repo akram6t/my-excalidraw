@@ -43,6 +43,18 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/*
+ * FOUC (Flash of Unstyled Content) prevention:
+ * When JS hasn't loaded yet, respect the system color-scheme preference.
+ * Once our ThemeProvider mounts, it reads localStorage and applies the
+ * correct .dark/.light class, overriding these defaults.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) {
+    color-scheme: dark;
+  }
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);

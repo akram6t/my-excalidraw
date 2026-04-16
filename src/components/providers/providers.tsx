@@ -1,6 +1,6 @@
 'use client';
 
-import { ThemeProvider } from './theme-provider';
+import { ThemeProvider } from '@/lib/theme-context';
 import AuthProvider from '@/components/auth/auth-provider';
 import { ReactNode } from 'react';
 

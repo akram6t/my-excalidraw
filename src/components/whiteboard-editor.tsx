@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore, type Whiteboard } from '@/store/app-store';
 import dynamic from 'next/dynamic';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/lib/theme-context';
 import { signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/store/app-store';
 import { useRouter } from 'next/navigation';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/lib/theme-context';
 import { Button } from '@/components/ui/button';
 import {
   LayoutGrid,

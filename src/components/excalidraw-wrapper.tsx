@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme-context";
 // Static CSS import — safe here because this component is only loaded client-side
 // via dynamic() with ssr:false in excalidraw.tsx
 import "@excalidraw/excalidraw/index.css";
