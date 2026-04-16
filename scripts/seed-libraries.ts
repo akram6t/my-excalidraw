@@ -8,16 +8,29 @@ const DB_NAME = process.env.DB_NAME || 'my-excalidraw';
 const LIBRARY_DIR = path.join(process.cwd(), 'upload');
 
 const LIBRARY_FILES = [
-  'post-it.excalidrawlib',
-  'db-eng.excalidrawlib',
   'algorithms-and-data-structures-arrays-matrices-trees.excalidrawlib',
-  'cloud.excalidrawlib',
-  'awesome-icons.excalidrawlib',
-  'data-viz.excalidrawlib',
-  'stick-figures.excalidrawlib',
-  'drwnio.excalidrawlib',
   'architecture-diagram-components.excalidrawlib',
+  'awesome-icons.excalidrawlib',
+  'basic-shapes.excalidrawlib',
+  'bubbles.excalidrawlib',
+  'cloud.excalidrawlib',
+  'computers.excalidrawlib',
+  'data-sources.excalidrawlib',
+  'data-viz.excalidrawlib',
+  'db-eng.excalidrawlib',
+  'drwnio.excalidrawlib',
+  'emojis.excalidrawlib',
+  'gadgets.excalidrawlib',
+  'it-logos.excalidrawlib',
+  'logos.excalidrawlib',
+  'mathematical-symbols.excalidrawlib',
+  'post-it.excalidrawlib',
+  'robots.excalidrawlib',
   'software-architecture.excalidrawlib',
+  'some-handdrawn-signs.excalidrawlib',
+  'stick-figures.excalidrawlib',
+  'stick-people.excalidrawlib',
+  'webpage-frames.excalidrawlib',
 ];
 
 const LibrarySchema = new mongoose.Schema(
